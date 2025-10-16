@@ -68,24 +68,49 @@ export default function SelectSociety() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
+      let orgId = localStorage.getItem("organizationId");
+
+      if (!orgId) {
+        const { data: org, error: orgError } = await supabase
+          .from("organizations")
+          .insert({
+            name: "Default Organization",
+            code: "DEFAULT",
+          })
+          .select()
+          .single();
+
+        if (orgError) throw orgError;
+        orgId = org.id;
+        localStorage.setItem("organizationId", orgId);
+      }
+
+      const societyCode = newSociety.name.replace(/\s+/g, '_').toUpperCase().substring(0, 10);
+
       const { data: society, error: societyError } = await supabase
         .from("societies")
         .insert({
+          organization_id: orgId,
           name: newSociety.name,
+          code: societyCode,
           registration_number: newSociety.registration_number || null,
           address: newSociety.address || null,
           phone: newSociety.phone || null,
-          created_by: user.id,
         })
         .select()
         .single();
 
       if (societyError) throw societyError;
 
-      // Create default account heads
-      await supabase.rpc("create_default_account_heads", {
-        p_society_id: society.id,
-      });
+      const { error: userError } = await supabase
+        .from("society_users")
+        .insert({
+          society_id: society.id,
+          user_id: user.id,
+          role: "admin",
+        });
+
+      if (userError) throw userError;
 
       toast.success("Society created successfully!");
       setDialogOpen(false);
